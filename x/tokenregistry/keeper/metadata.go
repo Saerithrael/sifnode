@@ -29,9 +29,12 @@ func (k keeper) GetTokenMetadata(ctx sdk.Context, denomHash string) (types.Token
 
 	entry := k.GetDenom(ctx, denomHash)
 
-	if !entry.IsWhitelisted {
-		return types.TokenMetadata{}, false
-	}
+	// if !entry.IsWhitelisted {
+	// 	ctx.Logger().Debug(instrumentation.PeggyTestMarker, "It is not whitelisted", zap.Reflect("entry", entry))
+	// 	instrumentation.PeggyCheckpoint(ctx.Logger(), instrument)
+
+	// 	return types.TokenMetadata{}, false
+	// }
 
 	metadata := types.TokenMetadata{
 		Decimals:          entry.Decimals,
@@ -64,6 +67,7 @@ func (k keeper) AddTokenMetadata(ctx sdk.Context, metadata types.TokenMetadata) 
 		entry.Denom = denomHash
 
 		k.SetToken(ctx, &entry)
+
 	}
 
 	instrumentation.PeggyCheckpoint(k.Logger(ctx), instrumentation.AddTokenMetadata, "entry", entry)

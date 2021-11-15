@@ -28,7 +28,12 @@ import { EthereumMainnetEvent } from "../../src/watcher/ethereumMainnet"
 import { filter } from "rxjs/operators"
 import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers"
 import * as ChildProcess from "child_process"
-import { crossChainBurnFee, crossChainFeeBase, EbRelayerAccount } from "../../src/devenv/sifnoded"
+import {
+  EbRelayerAccount,
+  crossChainFeeBase,
+  crossChainLockFee,
+  crossChainBurnFee,
+} from "../../src/devenv/sifnoded"
 import { v4 as uuidv4 } from "uuid"
 import * as dotenv from "dotenv"
 import deepEqual = require("deep-equal")
@@ -76,7 +81,9 @@ enum TransactionStep {
   BroadcastTx = "BroadcastTx",
   EthBridgeClaimArray = "EthBridgeClaimArray",
   CreateEthBridgeClaim = "CreateEthBridgeClaim",
+  AddNewTokenMetadata = "AddNewTokenMetadata",
   AddTokenMetadata = "AddTokenMetadata",
+
   AppendValidatorToProphecy = "AppendValidatorToProphecy",
   ProcessSuccessfulClaim = "ProcessSuccessfulClaim",
   CoinsSent = "CoinsSent",
@@ -84,8 +91,17 @@ enum TransactionStep {
   Burn = "Burn",
   GetTokenMetadata = "GetTokenMetadata",
   CosmosEvent = "CosmosEvent",
+  SignProphecy = "SignProphecy",
   PublishedProphecy = "PublishedProphecy",
   LogBridgeTokenMint = "LogBridgeTokenMint",
+
+  GetCrossChainFeeConfig = "GetCrossChainFeeConfig",
+  SendCoinsFromAccountToModule = "SendCoinsFromAccountToModule",
+  SetProphecy = "SetProphecy",
+  // TODO: Burn coin and burn are confusing. One is receivng a burn msg, the other a cosmos burncoin call
+  BurnCoins = "BurnCoins",
+  PublishCosmosBurnMessage = "PublishCosmosBurnMessage",
+  ReceiveCosmosBurnMessage = "ReceiveCosmosBurnMessage",
 }
 
 function isTerminalState(s: State) {
@@ -200,7 +216,9 @@ describe("lock and burn tests", () => {
     let cmd: string = `${gobin}/sifnoded keys add ${testSifAccountName} --home ${
       devEnvObject!.sifResults!.adminAddress!.homeDir
     } --keyring-backend test --output json`
-    let responseString: string = ChildProcess.execSync(cmd, { encoding: "utf8" })
+    let responseString: string = ChildProcess.execSync(cmd, {
+      encoding: "utf8",
+    })
     let responseJson = JSON.parse(responseString)
 
     // console.log("CreateTestAccount Response: ", responseJson)
@@ -222,7 +240,9 @@ describe("lock and burn tests", () => {
   ): object {
     // sifnoded tx bank send adminAccount testAccountToBeFunded --keyring-backend test --chain-id localnet concat(amount,symbol) --gas-prices=0.5rowan --gas-adjustment=1.5 --home <homeDir> --gas auto -y
     let sifnodedCmd: string = `${gobin}/sifnoded tx bank send ${adminAccount} ${destination} --keyring-backend test --chain-id localnet ${amount}${symbol} --gas-prices=0.5rowan --gas-adjustment=1.5 --home ${homeDir} --gas auto -y`
-    let responseString: string = ChildProcess.execSync(sifnodedCmd, { encoding: "utf8" })
+    let responseString: string = ChildProcess.execSync(sifnodedCmd, {
+      encoding: "utf8",
+    })
     return JSON.parse(responseString)
   }
 
@@ -246,6 +266,7 @@ describe("lock and burn tests", () => {
     crossChainFee: string,
     netwrokDescriptor: number
   ): Promise<object> {
+    // TODO: Formatting
     let sifnodedCmd: string = `${gobin}/sifnoded tx ethbridge burn ${sender.account} ${
       destination.address
     } ${amount} ${symbol} ${crossChainFee} --network-descriptor ${netwrokDescriptor} --keyring-backend test --gas-prices=0.5rowan --gas-adjustment=1.5 --chain-id localnet --home ${
@@ -546,12 +567,45 @@ describe("lock and burn tests", () => {
                     TransactionStep.GetTokenMetadata
                   )
 
-                case "SignProphecy":
-                  return {} as State
+                case "GetCrossChainFeeConfig":
+                  return ensureCorrectTransition(
+                    acc,
+                    v,
+                    TransactionStep.GetTokenMetadata,
+                    TransactionStep.GetCrossChainFeeConfig
+                  )
 
-                case "ProphecyStatus":
-                  // Assert it is successful. But we dn need to coz thats the only end state
-                  return {} as State
+                case "SendCoinsFromAccountToModule":
+                  return ensureCorrectTransition(
+                    acc,
+                    v,
+                    TransactionStep.GetCrossChainFeeConfig,
+                    TransactionStep.SendCoinsFromAccountToModule
+                  )
+
+                case "BurnCoins":
+                  return ensureCorrectTransition(
+                    acc,
+                    v,
+                    TransactionStep.SendCoinsFromAccountToModule,
+                    TransactionStep.BurnCoins
+                  )
+
+                case "SetProphecy":
+                  return ensureCorrectTransition(
+                    acc,
+                    v,
+                    TransactionStep.BurnCoins,
+                    TransactionStep.SetProphecy
+                  )
+
+                case "PublishCosmosBurnMessage":
+                  return ensureCorrectTransition(
+                    acc,
+                    v,
+                    TransactionStep.SetProphecy,
+                    TransactionStep.PublishCosmosBurnMessage
+                  )
               }
               return { ...acc, value: v, createdAt: acc.currentHeartbeat }
             }
