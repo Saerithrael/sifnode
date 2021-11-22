@@ -469,7 +469,7 @@ describe("lock and burn tests", () => {
     replayedEvents.unsubscribe()
   }
 
-  it("should allow ceth to eth tx", async () => {
+  it.only("should allow ceth to eth tx", async () => {
     const ethereumAccounts = await ethereumResultsToSifchainAccounts(
       devEnvObject.ethResults!,
       hardhat.ethers.provider
@@ -511,9 +511,10 @@ describe("lock and burn tests", () => {
     const states: Observable<State> = evmRelayerEvents.pipe(
       scan(
         (acc: State, v: SifEvent) => {
-          if (isTerminalState(acc))
+          if (isTerminalState(acc)) {
             // we've reached a decision
             return { ...acc, value: { kind: "terminate" } as Terminate }
+          }
           switch (v.kind) {
             case "EbRelayerError":
             case "SifnodedError":
@@ -527,12 +528,21 @@ describe("lock and burn tests", () => {
             case "EbRelayerEvmStateTransition": {
               let ebrelayerEvent: any = v.data
               switch (ebrelayerEvent.kind) {
-                case "CosmosEvent": {
+                case "ReceiveCosmosBurnMessage": {
+                  // return { ...acc, value: v, createdAt: acc.currentHeartbeat };
                   return ensureCorrectTransition(
                     acc,
                     v,
-                    TransactionStep.Burn,
-                    TransactionStep.CosmosEvent
+                    TransactionStep.PublishCosmosBurnMessage,
+                    TransactionStep.ReceiveCosmosBurnMessage
+                  )
+                }
+                case "SignProphecy": {
+                  return ensureCorrectTransition(
+                    acc,
+                    v,
+                    TransactionStep.ReceiveCosmosBurnMessage,
+                    TransactionStep.SignProphecy
                   )
                 }
 
@@ -540,7 +550,7 @@ describe("lock and burn tests", () => {
                   return ensureCorrectTransition(
                     acc,
                     v,
-                    TransactionStep.CosmosEvent,
+                    TransactionStep.SignProphecy,
                     TransactionStep.PublishedProphecy
                   )
                 }
@@ -551,7 +561,6 @@ describe("lock and burn tests", () => {
               let sifnodedEvent: any = v.data
               switch (sifnodedEvent.kind) {
                 case "Burn":
-                  let cosmos_sender = sifnodedEvent.msg.Interface.cosmos_sender
                   return ensureCorrectTransition(
                     acc,
                     v,
@@ -647,13 +656,13 @@ describe("lock and burn tests", () => {
     const lv = await lastValueFrom(states.pipe(takeWhile((x) => x.value.kind !== "terminate")))
     expect(
       lv.transactionStep,
-      `did not get a LogBridgeTokenMint, last step was ${JSON.stringify(lv, undefined, 2)}`
+      `did not complete, last step was ${JSON.stringify(lv, undefined, 2)}`
     ).to.eq(TransactionStep.LogBridgeTokenMint)
 
     verboseSubscription.unsubscribe()
   })
 
-  it.only("should send two locks of ethereum", async () => {
+  it("should send two locks of ethereum", async () => {
     const ethereumAccounts = await ethereumResultsToSifchainAccounts(
       devEnvObject.ethResults!,
       hardhat.ethers.provider
